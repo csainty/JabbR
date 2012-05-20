@@ -47,6 +47,8 @@ namespace JabbR.App_Start
                 return;
             }
 
+            AppHarbify.EF.ConnectionFactory.Enable();
+
             var kernel = new StandardKernel();
 
             kernel.Bind<JabbrContext>()
@@ -155,6 +157,7 @@ namespace JabbR.App_Start
         private static void DoMigrations()
         {
             // Get the Jabbr connection string
+            /*
             var connectionString = ConfigurationManager.ConnectionStrings["Jabbr"];
 
             if (String.IsNullOrEmpty(connectionString.ProviderName) ||
@@ -162,6 +165,11 @@ namespace JabbR.App_Start
             {
                 return;
             }
+            */
+
+            using (var connection = System.Data.Entity.Database.DefaultConnectionFactory.CreateConnection("Jabbr"))
+                if (!(connection is System.Data.SqlClient.SqlConnection))
+                    return;
 
             // Only run migrations for SQL server (Sql ce not supported as yet)
             var settings = new JabbR.Models.Migrations.MigrationsConfiguration();

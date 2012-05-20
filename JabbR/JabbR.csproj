@@ -52,6 +52,9 @@
     <Reference Include="AntiXSSLibrary, Version=4.0.0.0, Culture=neutral, PublicKeyToken=d127efab8a9c114f, processorArchitecture=MSIL">
       <HintPath>..\packages\AntiXSS.4.0.1\lib\net35\AntiXSSLibrary.dll</HintPath>
     </Reference>
+    <Reference Include="AppHarbify.EF">
+      <HintPath>..\packages\AppHarbify.EF.1.0.0\lib\AppHarbify.EF.dll</HintPath>
+    </Reference>
     <Reference Include="dotless.Core, Version=1.3.0.3, Culture=neutral, PublicKeyToken=96b446c9e63eae34, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\dotless.1.3.0.3\lib\dotless.Core.dll</HintPath>
