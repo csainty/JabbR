@@ -1,13 +1,13 @@
-﻿using System.Collections.Specialized;
+﻿using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Security.Principal;
 using JabbR.ContentProviders.Core;
 using JabbR.Models;
 using JabbR.Services;
+using Microsoft.AspNet.SignalR;
+using Microsoft.AspNet.SignalR.Hubs;
 using Moq;
 using Newtonsoft.Json;
-using SignalR;
-using SignalR.Hosting;
-using SignalR.Hubs;
 using Xunit;
 
 namespace JabbR.Test
@@ -19,7 +19,7 @@ namespace JabbR.Test
             [Fact]
             public void CannotJoinChat()
             {
-                var clientState = new TrackingDictionary();
+                var clientState = new StateChangeTracker();
                 string clientId = "1";
                 var user = new ChatUser
                 {
@@ -28,7 +28,7 @@ namespace JabbR.Test
                 };
 
                 TestableChat chat = GetTestableChat(clientId, clientState, user);
-                chat.Caller.id = "1234";
+                chat.Clients.Caller.id = "1234";
 
                 bool result = chat.Join();
 
@@ -38,7 +38,7 @@ namespace JabbR.Test
             [Fact]
             public void CanJoinChatIfIdentitySet()
             {
-                var clientState = new TrackingDictionary();
+                var clientState = new StateChangeTracker();
                 string clientId = "1";
                 var user = new ChatUser
                 {
@@ -48,7 +48,7 @@ namespace JabbR.Test
                 };
 
                 TestableChat chat = GetTestableChat(clientId, clientState, user);
-                chat.Caller.id = "1234";
+                chat.Clients.Caller.id = "1234";
 
                 bool result = chat.Join();
 
@@ -63,7 +63,7 @@ namespace JabbR.Test
             [Fact]
             public void MissingUsernameReturnsFalse()
             {
-                var clientState = new TrackingDictionary();
+                var clientState = new StateChangeTracker();
                 string clientId = "1";
                 var user = new ChatUser();
 
@@ -77,7 +77,7 @@ namespace JabbR.Test
             [Fact]
             public void CanDeserializeClientState()
             {
-                var clientState = new TrackingDictionary();
+                var clientState = new StateChangeTracker();
                 string clientId = "1";
                 var user = new ChatUser
                 {
@@ -86,8 +86,9 @@ namespace JabbR.Test
                     Identity = "foo"
                 };
 
-                var cookies = new NameValueCollection();
-                cookies["jabbr.state"] = JsonConvert.SerializeObject(new ClientState { UserId = user.Id });
+                var cookies = new Dictionary<string, Cookie>();
+                var cookie = new Cookie("jabbr.state", JsonConvert.SerializeObject(new ClientState { UserId = user.Id }));
+                cookies[cookie.Name] = cookie;
 
 
                 TestableChat chat = GetTestableChat(clientId, clientState, user, cookies);
@@ -100,12 +101,12 @@ namespace JabbR.Test
             }
         }
 
-        public static TestableChat GetTestableChat(string clientId, TrackingDictionary clientState, ChatUser user)
+        public static TestableChat GetTestableChat(string clientId, StateChangeTracker clientState, ChatUser user)
         {
-            return GetTestableChat(clientId, clientState, user, new NameValueCollection());
+            return GetTestableChat(clientId, clientState, user, new Dictionary<string, Cookie>());
         }
 
-        public static TestableChat GetTestableChat(string connectionId, TrackingDictionary clientState, ChatUser user, NameValueCollection cookies)
+        public static TestableChat GetTestableChat(string connectionId, StateChangeTracker clientState, ChatUser user, IDictionary<string, Cookie> cookies)
         {
             // setup things needed for chat
             var repository = new InMemoryRepository();
@@ -113,6 +114,7 @@ namespace JabbR.Test
             var chatService = new Mock<IChatService>();
             var connection = new Mock<IConnection>();
             var settings = new Mock<IApplicationSettings>();
+            var mockPipeline = new Mock<IHubPipelineInvoker>();
 
             settings.Setup(m => m.AuthApiKey).Returns("key");
 
@@ -123,18 +125,13 @@ namespace JabbR.Test
             var chat = new TestableChat(settings, resourceProcessor, chatService, repository, connection);
             var mockedConnectionObject = chat.MockedConnection.Object;
 
-            // setup client agent
-            chat.Clients = new ClientAgent(mockedConnectionObject, "Chat");
+            chat.Clients = new HubConnectionContext(mockPipeline.Object, mockedConnectionObject, "Chat", connectionId, clientState);
 
-            // setup signal agent
             var prinicipal = new Mock<IPrincipal>();
 
             var request = new Mock<IRequest>();
-            request.Setup(m => m.Cookies).Returns(new Cookies(cookies));
+            request.Setup(m => m.Cookies).Returns(cookies);
             request.Setup(m => m.User).Returns(prinicipal.Object);
-
-
-            chat.Caller = new StatefulSignalAgent(mockedConnectionObject, connectionId, "Chat", clientState);
 
             // setup context
             chat.Context = new HubCallerContext(request.Object, connectionId);
@@ -158,31 +155,6 @@ namespace JabbR.Test
                 MockSettings = mockSettings;
                 Repository = repository;
                 MockedConnection = connection;
-            }
-        }
-
-        private class Cookies : IRequestCookieCollection
-        {
-            private readonly NameValueCollection _nvc;
-            public Cookies(NameValueCollection nvc)
-            {
-                _nvc = nvc;
-            }
-
-            public int Count
-            {
-                get
-                {
-                    return _nvc.Count;
-                }
-            }
-
-            public Cookie this[string name]
-            {
-                get
-                {
-                    return new Cookie(name, _nvc[name]);
-                }
             }
         }
     }

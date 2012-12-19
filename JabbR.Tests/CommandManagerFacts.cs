@@ -12,6 +12,76 @@ namespace JabbR.Test
 {
     public class CommandManagerFacts
     {
+        public class ParseCommand
+        {
+            [Fact]
+            public void ReturnsTheCommandName()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("id", "id", "name", service, repository, cache, notificationService.Object);
+
+                const string commandName = "thecommand";
+                string[] args;
+                var parsedName = commandManager.ParseCommand(String.Format("/{0}", commandName), out args);
+
+                Assert.Equal(commandName, parsedName);
+            }
+
+            [Fact]
+            public void ParsesTheArguments()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("id", "id", "name", service, repository, cache, notificationService.Object);
+            
+                var parts = new[] {"/cmd", "arg0", "arg1", "arg2"};
+                var command = String.Join(" ", parts);
+                
+                string[] parsedArgs;
+                commandManager.ParseCommand(command, out parsedArgs);
+
+                Assert.Equal(parts.Skip(1), parsedArgs);
+            }
+
+            [Fact]
+            public void IgnoresMultipleWhitespaceBetweenArguments()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("id", "id", "name", service, repository, cache, notificationService.Object);
+                
+                var parts = new[] { "/cmd", "arg0", "arg1", "arg2" };
+                var command = String.Join("    ", parts);
+
+                string[] parsedArgs;
+                commandManager.ParseCommand(command, out parsedArgs);
+
+                Assert.Equal(parts.Skip(1), parsedArgs);
+            }
+
+            [Fact]
+            public void ProducesEmptyArrayIfNoArguments()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("id", "id", "name", service, repository, cache, notificationService.Object);
+
+                string[] parsedArgs;
+                commandManager.ParseCommand("/cmd", out parsedArgs);
+
+                Assert.Equal(0, parsedArgs.Length);
+            }
+        }
+
         public class TryHandleCommand
         {
             [Fact]
@@ -67,6 +137,33 @@ namespace JabbR.Test
                 var commandManager = new CommandManager("1", "1", "room", service, repository, cache, notificationService.Object);
 
                 Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/foo"));
+            }
+
+            [Fact]
+            public void ThrowsIfCommandIsAmbiguous()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var user = new ChatUser
+                {
+                    Name = "tilde",
+                    Id = "1",
+                    HashedPassword = "password".ToSha256(null)
+                };
+                repository.Add(user);
+                var room = new ChatRoom
+                {
+                    Name = "room",
+                };
+
+                user.Rooms.Add(room);
+                room.Users.Add(user);
+                repository.Add(room);
+                var commandManager = new CommandManager("1", "1", "room", service, repository, cache, notificationService.Object);
+
+                Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/a"));
             }
         }
 
@@ -1574,7 +1671,7 @@ namespace JabbR.Test
                                                         cache,
                                                         notificationService.Object);
 
-                bool result = commandManager.TryHandleCommand("/help");
+                bool result = commandManager.TryHandleCommand("/?");
 
                 Assert.True(result);
                 notificationService.Verify(x => x.ShowHelp(), Times.Once());
@@ -1953,6 +2050,206 @@ namespace JabbR.Test
                 Assert.False(room.Users.Contains(user2));
                 Assert.False(user2.Rooms.Contains(room));
                 notificationService.Verify(x => x.KickUser(user2, room), Times.Once());
+            }
+        }
+
+
+        public class BanCommand
+        {
+            [Fact]
+            public void MissingUserNameThrows()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var user = new ChatUser
+                {
+                    Name = "dfowler",
+                    Id = "1",
+                    IsAdmin = true
+                };
+                repository.Add(user);
+                var room = new ChatRoom
+                {
+                    Name = "room"
+                };
+                room.Users.Add(user);
+                room.Owners.Add(user);
+                user.Rooms.Add(room);
+                repository.Add(room);
+
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+
+                Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/ban"));
+            }
+
+            [Fact]
+            public void BannerIsNotAnAdminThrows()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var user = new ChatUser
+                {
+                    Name = "dfowler",
+                    Id = "1"
+                };
+                var user2 = new ChatUser
+                {
+                    Name = "dfowler2",
+                    Id = "1"
+                };
+                repository.Add(user);
+                var room = new ChatRoom
+                {
+                    Name = "room"
+                };
+                room.Users.Add(user);
+                room.Owners.Add(user);
+                room.Users.Add(user2);
+                room.Owners.Add(user2);
+                user.Rooms.Add(room);
+                user2.Rooms.Add(room);
+                repository.Add(room);
+
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+
+                var ex = Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/ban dfowler2"));
+
+                Assert.True(ex.Message == "You are not an admin.");
+            }
+
+            [Fact]
+            public void CannotBanUserIfNotExists()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var user = new ChatUser
+                {
+                    Name = "dfowler",
+                    Id = "1",
+                    IsAdmin = true
+                };
+                repository.Add(user);
+                var user2 = new ChatUser
+                {
+                    Name = "dfowler2",
+                    Id = "2"
+                };
+                repository.Add(user2);
+                var room = new ChatRoom
+                {
+                    Name = "room"
+                };
+                room.Users.Add(user);
+                room.Users.Add(user2);
+                room.Owners.Add(user);
+                user.Rooms.Add(room);
+                user2.Rooms.Add(room);
+                repository.Add(room);
+
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+
+                Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/ban fowler3"));
+            }
+
+            [Fact]
+            public void AdminCannotBanAdmin()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var user = new ChatUser
+                {
+                    Name = "dfowler",
+                    Id = "1",
+                    IsAdmin = true
+                };
+                repository.Add(user);
+                var user2 = new ChatUser
+                {
+                    Name = "dfowler2",
+                    Id = "2",
+                    IsAdmin = true
+                };
+                repository.Add(user2);
+                var room = new ChatRoom
+                {
+                    Name = "room"
+                };
+                room.Users.Add(user);
+                room.Users.Add(user2);
+                room.Owners.Add(user);
+                user.Rooms.Add(room);
+                user2.Rooms.Add(room);
+                repository.Add(room);
+
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+
+                Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/ban dfowler2"));
+            }
+
+            [Fact]
+            public void CannotBanUrSelf()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var user = new ChatUser
+                {
+                    Name = "dfowler",
+                    Id = "1",
+                    IsAdmin = true
+                };
+                repository.Add(user);
+                var room = new ChatRoom
+                {
+                    Name = "room"
+                };
+                room.Users.Add(user);
+                room.Owners.Add(user);
+                user.Rooms.Add(room);
+                repository.Add(room);
+
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+
+                Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/ban dfowler"));
             }
         }
 
@@ -4303,7 +4600,137 @@ namespace JabbR.Test
                 notificationService.Verify(x => x.BroadcastMessage(user, "check out <a rel=\"nofollow external\" target=\"_blank\" href=\"http://www.jabbr.net\" title=\"www.jabbr.net\">www.jabbr.net</a>"), Times.Once());
             }
         }
-       
+
+        public class WelcomeCommand
+        {
+            [Fact]
+            public void UserMustBeOwner()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var roomOwner = new ChatUser {
+                    Name = "thomasjo",
+                    Id = "1"
+                };
+                repository.Add(roomOwner);
+                var room = new ChatRoom {
+                    Name = "room"
+                };
+                room.Users.Add(roomOwner);
+                repository.Add(room);
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+                string welcomeMessage = "This is the room's welcome message";
+                var exception = Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/welcome " + welcomeMessage));
+
+                Assert.Equal("You are not an owner of room 'room'", exception.Message);
+            }
+
+            [Fact]
+            public void CommandSucceeds()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var roomOwner = new ChatUser {
+                    Name = "thomasjo",
+                    Id = "1"
+                };
+                repository.Add(roomOwner);
+                var room = new ChatRoom {
+                    Name = "room"
+                };
+                room.Owners.Add(roomOwner);
+                room.Users.Add(roomOwner);
+                repository.Add(room);
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+                string welcomeMessage = "This is the room's welcome message";
+                bool result = commandManager.TryHandleCommand("/welcome " + welcomeMessage);
+
+                Assert.True(result);
+                Assert.Equal(welcomeMessage, room.Welcome);
+                notificationService.Verify(x => x.ChangeWelcome(roomOwner, room), Times.Once());
+            }
+
+            [Fact]
+            public void ThrowsIfWelcomeMessageExceedsMaxLength()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var roomOwner = new ChatUser {
+                    Name = "thomasjo",
+                    Id = "1"
+                };
+                repository.Add(roomOwner);
+                var room = new ChatRoom {
+                    Name = "room"
+                };
+                room.Owners.Add(roomOwner);
+                room.Users.Add(roomOwner);
+                repository.Add(room);
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+                string welcomeMessage = new String('A', 201);
+                var exception = Assert.Throws<InvalidOperationException>(() => commandManager.TryHandleCommand("/welcome " + welcomeMessage));
+
+                Assert.Equal("Sorry, but your welcome is too long. Can please keep it under 200 characters.", exception.Message);
+            }
+
+            [Fact]
+            public void CommandClearsWelcomeIfNoTextProvided()
+            {
+                var repository = new InMemoryRepository();
+                var cache = new Mock<ICache>().Object;
+                var roomOwner = new ChatUser {
+                    Name = "thomasjo",
+                    Id = "1"
+                };
+                repository.Add(roomOwner);
+                var room = new ChatRoom {
+                    Name = "room",
+                    Welcome = "foo"
+                };
+                room.Owners.Add(roomOwner);
+                room.Users.Add(roomOwner);
+                repository.Add(room);
+                var service = new ChatService(cache, repository, new Mock<ICryptoService>().Object);
+                var notificationService = new Mock<INotificationService>();
+                var commandManager = new CommandManager("clientid",
+                                                        "1",
+                                                        "room",
+                                                        service,
+                                                        repository,
+                                                        cache,
+                                                        notificationService.Object);
+
+                bool result = commandManager.TryHandleCommand("/welcome");
+
+                Assert.True(result);
+                Assert.Equal(null, room.Welcome);
+                notificationService.Verify(x => x.ChangeWelcome(roomOwner, room), Times.Once());
+            }
+        }
 
         public static void VerifyThrows<T>(string command) where T : Exception
         {

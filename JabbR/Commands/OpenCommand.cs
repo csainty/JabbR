@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Web;
+using System.Linq;
 using JabbR.Models;
 
 namespace JabbR.Commands
 {
-    [Command("open", "")]
+    [Command("open", "Open a closed room. Only works if you're an owner of that room.", "room", "room")]
     public class OpenCommand : UserCommand
     {
         public override void Execute(CommandContext context, CallerContext callerContext, ChatUser callingUser, string[] args)
@@ -19,11 +20,19 @@ namespace JabbR.Commands
 
             context.Service.OpenRoom(callingUser, room);
 
-            context.Service.JoinRoom(callingUser, room, inviteCode: null);
+            // join the room, unless already in the room
+            if (!room.Users.Contains(callingUser))
+            {
+                context.Service.JoinRoom(callingUser, room, inviteCode: null);
 
-            context.Repository.CommitChanges();
+                context.Repository.CommitChanges();
 
-            context.NotificationService.JoinRoom(callingUser, room);
+                context.NotificationService.JoinRoom(callingUser, room);
+            }
+
+            var users = room.Users.ToList();
+            
+            context.NotificationService.UnCloseRoom(users, room);
         }
     }
 }

@@ -1,19 +1,19 @@
 ﻿using System;
 using System.IO;
 using System.Net;
+using System.Net.Cache;
 using System.Threading.Tasks;
 using System.Web;
 using JabbR.ContentProviders;
-using SignalR.Hosting.AspNet;
 
 namespace JabbR.Auth
 {
     /// <summary>
     /// Proxies images through the jabbr server to avoid mixed mode https.
     /// </summary>
-    public class ProxyHandler : HttpTaskAsyncHandler
+    public class ProxyHandler : System.Web.HttpTaskAsyncHandler
     {
-        public override Task ProcessRequestAsync(HttpContextBase context)
+        public override Task ProcessRequestAsync(HttpContext context)
         {
             string url = context.Request.QueryString["url"];
 
@@ -26,8 +26,13 @@ namespace JabbR.Auth
                 return TaskAsyncHelper.Empty;
             }
 
-            // TODO: Add caching
+            // Since we only handle requests for imgur and other random images, just cached based on the url
+            // context.Response.Cache.SetCacheability(HttpCacheability.Public);
+            // context.Response.Cache.SetMaxAge(TimeSpan.MaxValue);
+            // context.Response.Cache.SetLastModified(DateTime.Now);
+
             var request = (HttpWebRequest)WebRequest.Create(url);
+            request.CachePolicy = new RequestCachePolicy(RequestCacheLevel.Default);
             var requestTask = Task.Factory.FromAsync((cb, state) => request.BeginGetResponse(cb, state),
                                                                  ar => (HttpWebResponse)request.EndGetResponse(ar), null);
 

@@ -15,6 +15,7 @@ namespace JabbR.Services
 
         private const int NoteMaximumLength = 140;
         private const int TopicMaximumLength = 80;
+        private const int WelcomeMaximumLength = 200;
 
         // Iso reference: http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
         private static readonly IDictionary<string, string> Countries = new Dictionary<string, string>
@@ -606,7 +607,7 @@ namespace JabbR.Services
             return client;
         }
 
-        public ChatUser DisconnectClient(string clientId)
+        public string DisconnectClient(string clientId)
         {
             // Remove this client from the list of user's clients
             ChatClient client = _repository.GetClientById(clientId, includeUser: true);
@@ -634,7 +635,7 @@ namespace JabbR.Services
                 _repository.CommitChanges();
             }
 
-            return user;
+            return user.Id;
         }
 
         private void EnsureUserNameIsAvailable(string userName)
@@ -839,18 +840,6 @@ namespace JabbR.Services
                 throw new InvalidOperationException(String.Format("{0} is already closed.", targetRoom.Name));
             }
 
-            // Make sure the (owner) user is not in the room.
-            if (targetRoom.Users.Contains(user))
-            {
-                throw new InvalidOperationException("You are trying to close a room which you are still in. Please leave the room before closing it.");
-            }
-
-            // Kick all existing users in the room.
-            foreach (var targetUser in targetRoom.Users.ToList())
-            {
-                LeaveRoom(targetUser, targetRoom);
-            }
-
             // Make the room closed.
             targetRoom.Closed = true;
 
@@ -875,6 +864,13 @@ namespace JabbR.Services
         {
             EnsureOwnerOrAdmin(user, room);
             room.Topic = newTopic;
+            _repository.CommitChanges();
+        }
+
+        public void ChangeWelcome(ChatUser user, ChatRoom room, string newWelcome)
+        {
+            EnsureOwnerOrAdmin(user, room);
+            room.Welcome = newWelcome;
             _repository.CommitChanges();
         }
 
@@ -910,6 +906,19 @@ namespace JabbR.Services
             _repository.CommitChanges();
         }
 
+        public void BanUser(ChatUser admin, ChatUser targetUser)
+        {
+            EnsureAdmin(admin);
+
+            if (targetUser.IsAdmin)
+            {
+                throw new InvalidOperationException("You cannot ban another Admin.");
+            }
+
+            targetUser.IsBanned = true;
+
+            _repository.CommitChanges();
+        }
 
         internal static void ValidateNote(string note, string noteTypeName = "note", int? maxLength = null)
         {
@@ -928,6 +937,11 @@ namespace JabbR.Services
             ValidateNote(topic, noteTypeName: "topic", maxLength: TopicMaximumLength);
         }
 
+        internal static void ValidateWelcome(string message)
+        {
+            ValidateNote(message, noteTypeName: "welcome", maxLength: WelcomeMaximumLength);
+        }
+
         internal static void ValidateIsoCode(string isoCode)
         {
             string country = GetCountry(isoCode);
@@ -937,7 +951,7 @@ namespace JabbR.Services
                     "Sorry, but the country ISO code you requested doesn't exist. Please refer to http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2 for a proper list of country ISO codes.");
             }
         }
-
+         
         internal static string GetCountry(string isoCode)
         {
             if (String.IsNullOrEmpty(isoCode))

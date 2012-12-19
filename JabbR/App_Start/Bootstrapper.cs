@@ -16,13 +16,12 @@ using JabbR.Infrastructure;
 using JabbR.Models;
 using JabbR.Services;
 using JabbR.ViewModels;
+using Microsoft.AspNet.SignalR;
+using Microsoft.AspNet.SignalR.Hubs;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Ninject;
 using RouteMagic;
-using SignalR;
-using SignalR.Hosting.Common;
-using SignalR.Ninject;
 
 [assembly: WebActivator.PostApplicationStartMethod(typeof(JabbR.App_Start.Bootstrapper), "PreAppStart")]
 
@@ -52,16 +51,33 @@ namespace JabbR.App_Start
             var kernel = new StandardKernel();
 
             kernel.Bind<JabbrContext>()
-                .To<JabbrContext>()
-                .InRequestScope();
+                .To<JabbrContext>();
 
             kernel.Bind<IJabbrRepository>()
-                .To<PersistedRepository>()
-                .InRequestScope();
+                .To<PersistedRepository>();
 
             kernel.Bind<IChatService>()
-                  .To<ChatService>()
-                  .InRequestScope();
+                  .To<ChatService>();
+
+            kernel.Bind<Chat>()
+                  .ToMethod(context =>
+                  {
+                      // We're doing this manually since we want the chat repository to be shared
+                      // between the chat service and the chat hub itself
+                      var settings = context.Kernel.Get<IApplicationSettings>();
+                      var resourceProcessor = context.Kernel.Get<IResourceProcessor>();
+                      var repository = context.Kernel.Get<IJabbrRepository>();
+                      var cache = context.Kernel.Get<ICache>();
+                      var crypto = context.Kernel.Get<ICryptoService>();
+
+                      var service = new ChatService(cache, repository, crypto);
+
+                      return new Chat(settings,
+                                      resourceProcessor,
+                                      service,
+                                      repository,
+                                      cache);
+                  });
 
             kernel.Bind<ICryptoService>()
                 .To<CryptoService>()
@@ -74,6 +90,9 @@ namespace JabbR.App_Start
             kernel.Bind<IApplicationSettings>()
                   .To<ApplicationSettings>()
                   .InSingletonScope();
+
+            kernel.Bind<IVirtualPathUtility>()
+                  .To<VirtualPathUtilityWrapper>();
 
             kernel.Bind<IJavaScriptMinifier>()
                   .To<AjaxMinMinifier>()
@@ -96,8 +115,11 @@ namespace JabbR.App_Start
 
             var resolver = new NinjectDependencyResolver(kernel);
 
-            var host = new Host(resolver);
-            host.Configuration.KeepAlive = TimeSpan.FromSeconds(30);
+            var configuration = resolver.Resolve<IConfigurationManager>();
+            var pipeline = resolver.Resolve<IHubPipeline>();
+
+            configuration.KeepAlive = TimeSpan.FromSeconds(30);
+            pipeline.EnableAutoRejoiningGroups();
 
             RouteTable.Routes.MapHubs(resolver);
 
@@ -111,7 +133,6 @@ namespace JabbR.App_Start
             SetupErrorHandling();
 
             ClearConnectedClients(repositoryFactory());
-
             SetupRoutes(kernel);
             SetupWebApi(kernel);
         }
@@ -128,23 +149,24 @@ namespace JabbR.App_Start
         private static void SetupRoutes(IKernel kernel)
         {
             RouteTable.Routes.MapHttpRoute(
-                name: "DefaultApi",
+                name: "MessagesV1",
                 routeTemplate: "api/v1/{controller}/{room}"
             );
 
             RouteTable.Routes.MapHttpHandler<ProxyHandler>("proxy", "proxy/{*path}");
+
+            RouteTable.Routes.MapHttpRoute(
+                            name: "DefaultApi",
+                            routeTemplate: "api",
+                            defaults: new { controller = "ApiFrontPage" }
+                        );
+
         }
 
         private static void ClearConnectedClients(IJabbrRepository repository)
         {
             try
             {
-                var afkUsers = repository.Users.Online().Where(u => u.IsAfk);
-                foreach (var u in afkUsers)
-                {
-                    u.Status = (int)UserStatus.Offline;
-                }
-
                 repository.RemoveAllClients();
                 repository.CommitChanges();
             }
@@ -227,19 +249,15 @@ namespace JabbR.App_Start
         private static void MarkInactiveUsers(IJabbrRepository repo, IDependencyResolver resolver)
         {
             var connectionManager = resolver.Resolve<IConnectionManager>();
-            var clients = connectionManager.GetHubContext<Chat>().Clients;
+            var hubContext = connectionManager.GetHubContext<Chat>();
             var inactiveUsers = new List<ChatUser>();
 
-            foreach (var user in repo.Users.Online())
+            IQueryable<ChatUser> users = repo.Users.Online();
+
+            foreach (var user in users)
             {
                 var status = (UserStatus)user.Status;
                 var elapsed = DateTime.UtcNow - user.LastActivity;
-
-                if (!user.IsAfk && elapsed.TotalMinutes > 30)
-                {
-                    // After 30 minutes of inactivity make the user afk
-                    user.IsAfk = true;
-                }
 
                 if (elapsed.TotalMinutes > 15)
                 {
@@ -248,19 +266,22 @@ namespace JabbR.App_Start
                 }
             }
 
-            var roomGroups = from u in inactiveUsers
-                             from r in u.Rooms
-                             select new { User = u, Room = r } into tuple
-                             group tuple by tuple.Room into g
-                             select new
-                                        {
-                                            Room = g.Key,
-                                            Users = g.Select(t => new UserViewModel(t.User))
-                                        };
-
-            foreach (var roomGroup in roomGroups)
+            if (inactiveUsers.Count > 0)
             {
-                clients[roomGroup.Room.Name].markInactive(roomGroup.Users).Wait();
+                var roomGroups = from u in inactiveUsers
+                                 from r in u.Rooms
+                                 select new { User = u, Room = r } into tuple
+                                 group tuple by tuple.Room into g
+                                 select new
+                                 {
+                                     Room = g.Key,
+                                     Users = g.Select(t => new UserViewModel(t.User))
+                                 };
+
+                foreach (var roomGroup in roomGroups)
+                {
+                    hubContext.Clients.Group(roomGroup.Room.Name).markInactive(roomGroup.Users).Wait();
+                }
             }
         }
     }

@@ -1,7 +1,8 @@
 ﻿/// <reference path="Scripts/jquery-1.7.js" />
 /// <reference path="Scripts/jQuery.tmpl.js" />
 /// <reference path="Scripts/jquery.cookie.js" />
-
+/*jshint evil:true*/
+/*global Emoji:true, Markdown:true */
 (function ($, window) {
     "use strict";
 
@@ -29,7 +30,19 @@
     }
 
     $.fn.isNearTheEnd = function () {
-        return this[0].scrollTop + this.height() >= this[0].scrollHeight;
+        // Because of some weird bug in Chrome, sometimes the scroll stops at
+        // bottom-1. I'm just going to approximate here to hopefully handle most
+        // cases where it gets buggy. I don't think anyone will complain about
+        // 10 pixels.
+        return this[0].scrollTop + this.height() >= this[0].scrollHeight - 10;
+    };
+
+    $.fn.expandableContent = function () {
+        // These are selectors to various rich content that may increase the
+        // scrollable area after they were initially appended
+        var selectors = ['img:not(.gravatar)'];
+
+        return this.find(selectors.join(','));
     };
 
     // REVIEW: is it safe to assume we do not need to strip tags before decoding?
@@ -67,7 +80,7 @@
             ap = "PM";
         }
 
-        if (hr == 0) {
+        if (hr === 0) {
             hr = 12;
         }
 
@@ -77,8 +90,7 @@
 
         var mins = padZero(this.getMinutes());
         var seconds = padZero(this.getSeconds());
-        return hr + ":" + mins + ":" + seconds
-            + (showAp ? " " + ap : "");
+        return hr + ":" + mins + ":" + seconds + (showAp ? " " + ap : "");
     };
 
     // returns the date portion only (strips time)
@@ -91,7 +103,12 @@
         var t1 = this.getTime(),
             t2 = d.getTime();
 
-        return parseInt((t1 - t2) / (24 * 3600 * 1000));
+        return parseInt((t1 - t2) / (24 * 3600 * 1000), 10);
+    };
+
+    // adds a certain number of days to a Date object
+    Date.prototype.addDays = function (days) {
+        return new Date(this.getTime() + 1000 * 3600 * 24 * days);
     };
 
     var utility = {
