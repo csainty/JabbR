@@ -2,9 +2,9 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Security.Application;
 
 namespace JabbR.ContentProviders.Core
 {
@@ -18,8 +18,8 @@ namespace JabbR.ContentProviders.Core
                 {
                     result.Content = String.Format(CultureInfo.InvariantCulture,
                                                       ContentFormat,
-                                                      IsPopOut ? @"<div class=""collapsible_pin""></div>" : "",
-                                                      result.Title,
+                                                      String.Empty,
+                                                      Encoder.HtmlEncode(result.Title),
                                                       result.Content);
                 }
 
@@ -54,7 +54,6 @@ namespace JabbR.ContentProviders.Core
         }
 
         protected virtual bool IsCollapsible { get { return true; } }
-        protected virtual bool IsPopOut { get { return true; } }
 
         private const string ContentFormat = @"<div class=""collapsible_content"">{0}<h3 class=""collapsible_title"">{1} (click to show/hide)</h3><div class=""collapsible_box"">{2}</div></div>";
     }

@@ -3,11 +3,19 @@ namespace JabbR.Services
 {
     public interface IApplicationSettings
     {
-        string AuthApiKey { get; }
+        string EncryptionKey { get; }
+        string VerificationKey { get; }
 
         string DefaultAdminUserName { get; }
-
         string DefaultAdminPassword { get; }
-        string AuthAppId { get; }
+
+        bool RequireHttps { get; }
+        bool MigrateDatabase { get; }
+        bool ProxyImages { get; }
+        int ProxyImageMaxSizeBytes { get; }
+
+        string AzureblobStorageConnectionString { get; }
+
+        int MaxFileUploadBytes { get; }
     }
 }

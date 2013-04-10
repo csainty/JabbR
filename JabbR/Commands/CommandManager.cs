@@ -54,6 +54,13 @@ namespace JabbR.Commands
         public string ParseCommand(string commandString, out string[] args)
         {
             var parts = commandString.Substring(1).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length == 0)
+            {
+                args = new string[0];
+                return null;
+            }
+
             args = parts.Skip(1).ToArray();
             return parts[0];
         }
@@ -72,6 +79,11 @@ namespace JabbR.Commands
 
         public bool TryHandleCommand(string commandName, string[] args)
         {
+            if (String.IsNullOrEmpty(commandName))
+            {
+                return false;
+            }
+
             commandName = commandName.Trim();
             if (commandName.StartsWith("/"))
             {
@@ -113,7 +125,7 @@ namespace JabbR.Commands
             return true;
         }
 
-        private void MatchCommand(string commandName, out ICommand command)
+        public void MatchCommand(string commandName, out ICommand command)
         {
             if (_commandCache == null)
             {
@@ -134,16 +146,31 @@ namespace JabbR.Commands
                                                       StringComparer.OrdinalIgnoreCase);
             }
 
-            var extended = _commandCache.Keys.Where(comm => comm.StartsWith(commandName));
-            switch(extended.Count()) {
+            IList<string> candidates = null;
+
+            var exactMatches = _commandCache.Keys.Where(comm => comm.Equals(commandName, StringComparison.OrdinalIgnoreCase))
+                                                 .ToList();
+
+            if (exactMatches.Count == 1)
+            {
+                candidates = exactMatches;
+            }
+            else
+            {
+                candidates = _commandCache.Keys.Where(comm => comm.StartsWith(commandName, StringComparison.OrdinalIgnoreCase))
+                                               .ToList();
+            }
+
+            switch (candidates.Count)
+            {
                 case 1:
-                    _commandCache.TryGetValue(extended.Single(), out command);
-                    commandName = extended.Single();
+                    _commandCache.TryGetValue(candidates[0], out command);
+                    commandName = candidates[0];
                     break;
                 case 0:
                     throw new CommandNotFoundException();
                 default:
-                    throw new CommandAmbiguityException(extended);
+                    throw new CommandAmbiguityException(candidates);
             }
         }
 

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
 using JabbR.Infrastructure;
 using JabbR.Models;
 
@@ -21,7 +20,7 @@ namespace JabbR.Commands
             {
                 throw new InvalidOperationException("Who are you trying send a private message to?");
             }
-            var toUserName = HttpUtility.HtmlDecode(args[0]);
+            var toUserName = args[0];
             ChatUser toUser = context.Repository.VerifyUser(toUserName);
 
             if (toUser == callingUser)
@@ -35,12 +34,6 @@ namespace JabbR.Commands
             {
                 throw new InvalidOperationException(String.Format("What did you want to say to '{0}'?", toUser.Name));
             }
-
-            HashSet<string> urls;
-            var transform = new TextTransform(context.Repository);
-            messageText = transform.Parse(messageText);
-
-            messageText = TextTransform.TransformAndExtractUrls(messageText, out urls);
 
             context.NotificationService.SendPrivateMessage(callingUser, toUser, messageText);
         }

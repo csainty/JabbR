@@ -1,18 +1,12 @@
 ﻿using JabbR.Models;
+using JabbR.UploadHandlers;
 
 namespace JabbR.Services
 {
     public interface IChatService
     {
-        // Users
-        ChatUser AddUser(string userName, string clientId, string userAgent, string password);
-        ChatUser AddUser(string userName, string identity, string email);
-
+        // Users 
         ChatClient AddClient(ChatUser user, string clientId, string userAgent);
-        void AuthenticateUser(string userName, string password);
-        void ChangeUserName(ChatUser user, string newUserName);
-        void ChangeUserPassword(ChatUser user, string oldPassword, string newPassword);
-        void SetUserPassword(ChatUser user, string password);
         void UpdateActivity(ChatUser user, string clientId, string userAgent);
         string DisconnectClient(string clientId);
 
@@ -24,6 +18,7 @@ namespace JabbR.Services
 
         // Messages
         ChatMessage AddMessage(ChatUser user, ChatRoom room, string id, string content);
+        ChatMessage AddMessage(string userId, string roomName, string url);
 
         // Owner commands
         void AddOwner(ChatUser user, ChatUser targetUser, ChatRoom targetRoom);
@@ -42,5 +37,10 @@ namespace JabbR.Services
         void AddAdmin(ChatUser admin, ChatUser targetUser);
         void RemoveAdmin(ChatUser admin, ChatUser targetUser);
         void BanUser(ChatUser callingUser, ChatUser targetUser);
+
+        void AddAttachment(ChatMessage message, string fileName, string contentType, long size, UploadResult result);
+
+        // Add mention
+        void AddNotification(ChatUser mentionedUser, ChatMessage message, bool markAsRead);
     }
 }
