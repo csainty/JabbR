@@ -19,6 +19,8 @@ namespace JabbR
     {
         public void Configuration(IAppBuilder app)
         {
+            AppHarbify.EF.ConnectionFactory.Enable();
+
             var settings = new ApplicationSettings();
 
             if (settings.MigrateDatabase)
@@ -97,7 +99,6 @@ namespace JabbR
             jsonFormatter.SerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
             config.Formatters.Add(jsonFormatter);
             config.DependencyResolver = new NinjectWebApiDependencyResolver(kernel);
-
 
             config.Routes.MapHttpRoute(
                 name: "LoginV1",

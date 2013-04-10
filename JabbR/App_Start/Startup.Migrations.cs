@@ -14,6 +14,7 @@ namespace JabbR
         private static void DoMigrations()
         {
             // Get the Jabbr connection string
+            /*
             var connectionString = ConfigurationManager.ConnectionStrings["Jabbr"];
 
             if (String.IsNullOrEmpty(connectionString.ProviderName) ||
@@ -21,6 +22,11 @@ namespace JabbR
             {
                 return;
             }
+            */
+
+            using (var connection = System.Data.Entity.Database.DefaultConnectionFactory.CreateConnection("Jabbr"))
+                if (!(connection is System.Data.SqlClient.SqlConnection))
+                    return;
 
             Database.SetInitializer<JabbrContext>(null);
 
